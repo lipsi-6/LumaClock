@@ -18,3 +18,8 @@
 # Optional icon generation tool
 !/tools/
 !/tools/generate_icon.py
+
+# GitHub Actions release workflow
+!/.github/
+!/.github/workflows/
+!/.github/workflows/release.yml
