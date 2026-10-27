@@ -3,6 +3,7 @@
 
 # Public project files
 !/.gitignore
+!/.gitattributes
 !/README.md
 !/build-generic.ps1
 
