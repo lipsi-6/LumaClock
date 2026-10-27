@@ -1,0 +1,19 @@
+# Ignore everything unless explicitly allowed below.
+*
+
+# Public project files
+!/.gitignore
+!/README.md
+!/build-generic.ps1
+
+# C++ sources: parent directories must be allowed before their files.
+!/src/
+!/src/*
+
+# Build resources and editable icon
+!/resources/
+!/resources/*
+
+# Optional icon generation tool
+!/tools/
+!/tools/generate_icon.py
