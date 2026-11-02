@@ -14,18 +14,63 @@ concurrency:
 
 jobs:
   release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    name: Build and release Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - name: Create a published release
+      - name: Check out the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up MinGW-w64 GCC
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+
+      - name: Build Release executable
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $compiler = Join-Path $env:MSYS2_LOCATION 'ucrt64\bin\g++.exe'
+          .\build-generic.ps1 -Compiler $compiler
+
+      - name: Run the built-in self-test
+        timeout-minutes: 2
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'app\LumaClock.exe'
+          $checks = New-Item -ItemType Directory -Path 'build\release-checks' -Force
+          $report = Join-Path $checks.FullName 'report.txt'
+          $process = Start-Process -FilePath $exe -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
+          if (-not (Test-Path -LiteralPath $report)) { throw 'The self-test did not produce a report.' }
+          Get-Content -LiteralPath $report
+          if ($process.ExitCode -ne 0) { throw "Self-test failed with exit code $($process.ExitCode)." }
+
+      - name: Publish the executable to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --verify-tag \
-            --title "$RELEASE_TAG" \
-            --generate-notes \
-            --latest
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'app\LumaClock.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Release executable not found.' }
+
+          # Re-running a tag's workflow updates its existing release asset.
+          gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json id 1>$null 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $exe --repo $env:GH_REPO --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Uploading LumaClock.exe failed.' }
+            gh release edit $env:RELEASE_TAG --repo $env:GH_REPO --draft=false --prerelease=false --latest
+          }
+          else {
+            gh release create $env:RELEASE_TAG $exe --repo $env:GH_REPO --verify-tag --title $env:RELEASE_TAG --generate-notes --latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing the GitHub Release failed.' }
